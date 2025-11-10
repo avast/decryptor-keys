@@ -1,5 +1,5 @@
 # Decryption keys for our ransomware decryptors
 
-Decryption keys for Shade/Troldesh/Encoder.858 ransomware copied from shade-team repository:
+These keys are for use of Avast ransomware decryption tools.
+Contact decryptors@avast.com for decryptor-related issues.
 
-https://github.com/shade-team/keys
