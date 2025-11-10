@@ -2,4 +2,4 @@
 
 These keys are for use of Avast ransomware decryption tools.
 
-Contact decryptors@avast.com for decryptor-related issues.
+Contact decryptors-at-avast-dot-com for decryptor-related issues.
