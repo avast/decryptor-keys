@@ -148,6 +148,15 @@ def main():
 
     all_keys = []
 
+    # Load already-known-keys from output file
+    with open(OUTPUT_FILE, "r") as inp:
+        for line in inp:
+            rsa_private_key = line.strip()
+            if rsa_private_key == "" or rsa_private_key in all_keys:
+                continue
+            all_keys.append(rsa_private_key)
+
+    # Load keys from samples of decryptors
     for filename in os.listdir("."):
 
         # Construct the full path name
