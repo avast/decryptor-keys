@@ -15,6 +15,7 @@ import queue
 import re
 import sys
 import threading
+import time
 
 try:
     from Crypto.PublicKey import RSA
@@ -26,7 +27,7 @@ except ImportError:
 TEST_ENCRYPTED_FILE = "troldesh-example-file.better_call_saul"
 CHUNK_SIZE = 0x180
 EXPECTED_PLAINTEXT_LEN = 0x42
-TOTAL_KEYS = 751000
+TOTAL_KEYS = 750100
 
 PEM_KEY_RE = re.compile(
     rb"-----BEGIN (?:RSA )?PRIVATE KEY-----.*?-----END (?:RSA )?PRIVATE KEY-----",
@@ -45,10 +46,18 @@ def find_pem_keys(data):
     return PEM_KEY_RE.findall(data)
 
 
-def print_progress(processed):
+def format_elapsed(seconds):
+    hours, remainder = divmod(int(seconds), 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def print_progress(processed, start_time):
     percent = processed / TOTAL_KEYS * 100
+    elapsed = format_elapsed(time.monotonic() - start_time)
     sys.stdout.write(
-        f"\r[*] Processed {processed}/{TOTAL_KEYS} keys ({percent:.2f}%)")
+        f"\r[*] Processed {processed}/{TOTAL_KEYS} keys "
+        f"({percent:.2f}%) elapsed {elapsed}")
     sys.stdout.flush()
 
 
@@ -80,7 +89,7 @@ def rsa_attempt_decrypt(pem, ciphertext):
     return True, False
 
 
-def worker(task_queue, ciphertext, matches, matches_lock, progress, progress_lock, found_event):
+def worker(task_queue, ciphertext, matches, matches_lock, progress, progress_lock, found_event, start_time):
 
     # Keep working until a proper key is found
     while not found_event.is_set():
@@ -104,7 +113,7 @@ def worker(task_queue, ciphertext, matches, matches_lock, progress, progress_loc
         if key_is_valid is True:
             with progress_lock:
                 progress[0] += 1
-                print_progress(progress[0])
+                print_progress(progress[0], start_time)
 
         # If the decryption succeeded
         if decryption_ok is True:
@@ -161,7 +170,6 @@ def run_test(test_file, path):
 
 
 def main():
-
     # Check the arguments
     if len(sys.argv) == 1:
         sys.exit("Missing name of the encrypted file.")
@@ -184,12 +192,13 @@ def main():
     progress = [0]
     progress_lock = threading.Lock()
     found_event = threading.Event()
+    start_time = time.monotonic()
 
     threads = [
         threading.Thread(
             target=worker,
             args=(task_queue, ciphertext, matches, matches_lock,
-                  progress, progress_lock, found_event),
+                  progress, progress_lock, found_event, start_time),
             daemon=True,
         )
         for _ in range(num_workers)
@@ -219,11 +228,16 @@ def main():
             # Search the repository
             pem_blocks = find_pem_keys(data)
             if not pem_blocks:
-                # No RSA key in this file - skip and move on.
                 continue
 
             for pem in pem_blocks:
                 task_queue.put((path, pem))
+
+    # Push one sentinel per worker so that, if no key ever matched and
+    # found_event never gets set, workers still stop once the queue drains
+    # instead of blocking forever on task_queue.get().
+    for _ in threads:
+        task_queue.put(None)
 
     # Once a worker finds the key it sets found_event, which makes every
     # worker (including any still blocked on task_queue.get) exit its loop.
